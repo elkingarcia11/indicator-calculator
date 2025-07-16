@@ -91,11 +91,3 @@ The module expects OHLCV (Open, High, Low, Close, Volume) data in a pandas DataF
 - `volume` (or `Volume`) - Required for VWMA calculation
 
 The module automatically handles both lowercase and uppercase column names.
-
-## Testing
-
-Run the test suite to validate indicator calculations:
-
-```bash
-python test_indicators.py
-```
