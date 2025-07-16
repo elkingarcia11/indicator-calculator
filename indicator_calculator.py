@@ -98,7 +98,7 @@ class IndicatorCalculator:
         Calculate the ROC of the ROC for the data
         """
         # Calculate the ROC of the ROC
-        data['ROC of ROC'] = data['ROC'].pct_change(period=period)
+        data['roc_of_roc'] = data['roc'].pct_change(period=period)
         # Return the data
         return data
     
@@ -129,15 +129,15 @@ class IndicatorCalculator:
         Returns:
             VWMA values as pandas Series
         """
-        if 'Volume' not in data.columns:
+        if 'volume' not in data.columns:
             print("Volume data not available, using SMA instead of VWMA")
-            return data['Close'].rolling(window=period).mean()
+            return data['close'].rolling(window=period).mean()
         
         # Use typical price for VWMA calculation
-        typical_price = (data['High'] + data['Low'] + data['Close']) / 3
+        typical_price = (data['high'] + data['low'] + data['close']) / 3
         
         # Handle potential volume data issues
-        volume = data['Volume'].fillna(1)  # Replace NaN volumes with 1
+        volume = data['volume'].fillna(1)  # Replace NaN volumes with 1
         
         # Calculate the VWMA
         vwma = (typical_price * volume).rolling(window=period).sum() / volume.rolling(window=period).sum()
@@ -206,59 +206,60 @@ class IndicatorCalculator:
             # Make a copy to avoid modifying original data
             result = data.copy()
             
-            if 'RSI' in indicator_periods:
+            if 'rsi' in indicator_periods:
                 # Calculate RSI
-                result['RSI'] = IndicatorCalculator.calculate_rsi(result['Close'], indicator_periods['RSI'])
-            if 'Stoch_RSI_K' in indicator_periods and 'Stoch_RSI_D' in indicator_periods:
+                result['rsi'] = IndicatorCalculator.calculate_rsi(result['close'], indicator_periods['rsi'])
+                
+            if 'stoch_rsi_k' in indicator_periods and 'stoch_rsi_d' in indicator_periods:
                 # Calculate Stochastic RSI
-                stoch_rsi_k, stoch_rsi_d = IndicatorCalculator.calculate_stochastic_rsi(result['Close'], indicator_periods['Stoch_RSI_K'], indicator_periods['Stoch_RSI_D'])
-                result['Stoch_RSI_K'] = stoch_rsi_k
-                result['Stoch_RSI_D'] = stoch_rsi_d
+                stoch_rsi_k, stoch_rsi_d = IndicatorCalculator.calculate_stochastic_rsi(result['close'], indicator_periods['stoch_rsi_k'], indicator_periods['stoch_rsi_d'])
+                result['stoch_rsi_k'] = stoch_rsi_k
+                result['stoch_rsi_d'] = stoch_rsi_d
             
-            if 'MACD_Fast' in indicator_periods and 'MACD_Slow' in indicator_periods and 'MACD_Signal' in indicator_periods:
+            if 'macd_fast' in indicator_periods and 'macd_slow' in indicator_periods and 'macd_signal' in indicator_periods:
                 # Calculate MACD
-                macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(result['Close'], indicator_periods['MACD_Fast'], indicator_periods['MACD_Slow'], indicator_periods['MACD_Signal'])
-                result['MACD_Line'] = macd_line
-                result['MACD_Signal'] = signal_line
-                result['MACD_Histogram'] = histogram
+                macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(result['close'], indicator_periods['macd_fast'], indicator_periods['macd_slow'], indicator_periods['macd_signal'])
+                result['macd_line'] = macd_line
+                result['macd_signal'] = signal_line
+                result['macd_histogram'] = histogram
             
-            if 'ROC' in indicator_periods:
+            if 'roc' in indicator_periods:
                 # Calculate ROC
-                result['ROC'] = IndicatorCalculator.calculate_roc(result['Close'], indicator_periods['ROC'])
-                if 'ROC_of_ROC' in indicator_periods:
-                    result['ROC_of_ROC'] = IndicatorCalculator.calculate_roc_of_roc(result['ROC'], indicator_periods['ROC_of_ROC'])
+                result['roc'] = IndicatorCalculator.calculate_roc(result['close'], indicator_periods['roc'])
+                if 'roc_of_roc' in indicator_periods:
+                    result['roc_of_roc'] = IndicatorCalculator.calculate_roc_of_roc(result['roc'], indicator_periods['roc_of_roc'])
             
-            if 'EMA' in indicator_periods:
+            if 'ema' in indicator_periods:
                 # Calculate EMAs
-                result['EMA'] = IndicatorCalculator.calculate_ema(result['Close'], indicator_periods['EMA'])
+                result['ema'] = IndicatorCalculator.calculate_ema(result['close'], indicator_periods['ema'])
             
-            if 'VWMA' in indicator_periods:
+            if 'vwma' in indicator_periods:
                 # Calculate VWMA
-                result['VWMA'] = IndicatorCalculator.calculate_vwma(result, indicator_periods['VWMA'])
+                result['vwma'] = IndicatorCalculator.calculate_vwma(result, indicator_periods['vwma'])
             
-            if 'SMA' in indicator_periods:
+            if 'sma' in indicator_periods:
                 # Calculate SMA
-                result['SMA'] = IndicatorCalculator.calculate_sma(result['Close'], indicator_periods['SMA'])
+                result['sma'] = IndicatorCalculator.calculate_sma(result['close'], indicator_periods['sma'])
             
-            if 'Volatility' in indicator_periods:
+            if 'volatility' in indicator_periods:
                 # Calculate Volatility
-                result['Volatility'] = IndicatorCalculator.calculate_volatility(result['Close'], indicator_periods['Volatility'])
+                result['volatility'] = IndicatorCalculator.calculate_volatility(result['close'], indicator_periods['volatility'])
             
-            if 'Price_Change' in indicator_periods:
+            if 'price_change' in indicator_periods:
                 # Calculate Price Change
-                result['Price_Change'] = IndicatorCalculator.calculate_price_change(data=result['Close'])
+                result['price_change'] = IndicatorCalculator.calculate_price_change(data=result['close'])
             
-            if 'Bollinger_Bands' in indicator_periods:
+            if 'bollinger_bands' in indicator_periods:
                 # Calculate Bollinger Bands
-                result['Bollinger_Bands'] = IndicatorCalculator.calculate_bollinger_bands(result['Close'], indicator_periods['Bollinger_Bands'])
+                result['bollinger_bands'] = IndicatorCalculator.calculate_bollinger_bands(result['close'], indicator_periods['bollinger_bands'])
             
-            if 'Bollinger_Bands_Width' in indicator_periods:
+            if 'bollinger_bands_width' in indicator_periods:
                 # Calculate Bollinger Bands Width
-                result['Bollinger_Bands_Width'] = IndicatorCalculator.calculate_bollinger_bands_width(result['Close'], indicator_periods['Bollinger_Bands_Width'])
+                result['bollinger_bands_width'] = IndicatorCalculator.calculate_bollinger_bands_width(result['close'], indicator_periods['bollinger_bands_width'])
             
-            if 'ATR' in indicator_periods:
+            if 'atr' in indicator_periods:
                 # Calculate ATR
-                result['ATR'] = IndicatorCalculator.calculate_atr(result['Close'], indicator_periods['ATR'])
+                result['atr'] = IndicatorCalculator.calculate_atr(result['close'], indicator_periods['atr'])
             
             print(f"Calculated {len(result.columns) - len(data.columns)} indicators")
             return result
