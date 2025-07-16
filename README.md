@@ -1,4 +1,4 @@
-# Technical Indicators Module
+# Technical Indicators Calculator Module
 
 A Python module for calculating various technical indicators on financial market data.
 
