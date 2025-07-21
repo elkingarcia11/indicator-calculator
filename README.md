@@ -1,6 +1,6 @@
 # Technical Indicators Calculator Module
 
-A Python module for calculating various technical indicators on financial market data.
+A Python module for calculating various technical indicators on financial market data, with support for both batch processing and real-time single-tick calculations.
 
 ## Features
 
@@ -32,9 +32,9 @@ pip install -r requirements.txt
 
 ### Indicator Calculator Module
 
-The `indicator_calculator.py` file contains the `IndicatorCalculator` class, which provides a comprehensive set of static methods for calculating technical indicators.
+The `indicator_calculator.py` file contains the `IndicatorCalculator` class, which provides both static methods for calculating technical indicators on historical data and instance methods for real-time calculations.
 
-#### Available Methods
+#### Available Static Methods
 
 - `calculate_rsi(data, period=14)` - Relative Strength Index
 - `calculate_stochastic_rsi(data, period=14, k_period=3, d_period=3)` - Stochastic RSI (%K and %D)
@@ -49,36 +49,134 @@ The `indicator_calculator.py` file contains the `IndicatorCalculator` class, whi
 - `calculate_bollinger_bands(data, period=20, std_dev=2)` - Bollinger Bands (upper/lower bands)
 - `calculate_bollinger_bands_width(data, period=20, std_dev=2)` - Bollinger Bands Width
 - `calculate_atr(data, period=14)` - Average True Range
-- `calculate_all_indicators(data, indicator_periods={})` - Calculate all indicators at once
 
-#### Usage Example
+#### Available Instance Methods
+
+- `calculate_all_indicators(data, indicator_periods={})` - Calculate all indicators for historical data
+- `calculate_latest_tick_indicators(existing_data, new_row, indicator_periods)` - Calculate indicators for a single new tick
+
+### Real-Time Indicator Calculation
+
+The `calculate_latest_tick_indicators` method is designed for real-time trading applications where you need to efficiently update indicators as new market data arrives.
+
+#### Key Features:
+
+- **Efficient single-tick calculation** - Only calculates indicators for the latest data point
+- **Configurable indicators** - Specify exactly which indicators and periods you need
+- **Error handling** - Returns empty strings for insufficient data or calculation errors
+- **Memory efficient** - Doesn't store unnecessary historical calculations
+
+#### Real-Time Usage Example
 
 ```python
 from indicator_calculator import IndicatorCalculator
 import pandas as pd
 
+# Create calculator instance
+calculator = IndicatorCalculator()
+
+# Define which indicators and periods you want
+indicator_periods = {
+    'rsi': 14,
+    'ema': 20,
+    'sma': 50,
+    'macd_fast': 12,
+    'macd_slow': 26,
+    'macd_signal': 9,
+    'bollinger_bands': 20,
+    'bollinger_std_dev': 2,
+    'atr': 14,
+    'volatility': 20,
+    'roc': 10,
+    'stoch_rsi_k': 3,
+    'stoch_rsi_d': 3,
+    'vwma': 20,
+    'price_change': 1
+}
+
+# Your existing historical data
+existing_data = pd.DataFrame({
+    'open': [100, 101, 102, 103],
+    'high': [105, 106, 107, 108],
+    'low': [99, 100, 101, 102],
+    'close': [104, 105, 106, 107],
+    'volume': [1000, 1100, 1200, 1300]
+})
+
+# New incoming tick/row
+new_row = pd.Series({
+    'open': 107,
+    'high': 109,
+    'low': 106,
+    'close': 108,
+    'volume': 1400
+})
+
+# Calculate indicators for the new tick only
+result = calculator.calculate_latest_tick_indicators(
+    existing_data=existing_data,
+    new_row=new_row,
+    indicator_periods=indicator_periods
+)
+
+print(result)
+# Output includes basic OHLCV data plus calculated indicators
+# Insufficient data indicators will be empty strings ("")
+```
+
+### Batch Processing Usage Example
+
+```python
+from indicator_calculator import IndicatorCalculator
+import pandas as pd
+
+# Create calculator instance
+calculator = IndicatorCalculator()
+
 # Load your OHLCV data
 data = pd.read_csv('your_data.csv')
 
-# Calculate individual indicators
-rsi = IndicatorCalculator.calculate_rsi(data['Close'], period=14)
-macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(data['Close'])
+# Calculate individual indicators using static methods
+rsi = IndicatorCalculator.calculate_rsi(data['close'], period=14)
+macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(data['close'])
 
 # Or calculate all indicators at once
 indicator_periods = {
-    'RSI': 14,
-    'MACD_Fast': 12,
-    'MACD_Slow': 26,
-    'MACD_Signal': 9,
-    'EMA': 20,
-    'SMA': 50,
-    'Bollinger_Bands': 20,
-    'Bollinger_Bands_Width': 20,
-    'ATR': 14,
-    'Volatility': 20
+    'rsi': 14,
+    'macd_fast': 12,
+    'macd_slow': 26,
+    'macd_signal': 9,
+    'ema': 20,
+    'sma': 50,
+    'bollinger_bands': 20,
+    'bollinger_std_dev': 2,
+    'atr': 14,
+    'volatility': 20
 }
-result = IndicatorCalculator().calculate_all_indicators(data, indicator_periods)
+
+result = calculator.calculate_all_indicators(data, indicator_periods)
 ```
+
+### Supported Indicator Periods Configuration
+
+The `indicator_periods` dictionary supports the following keys:
+
+- `'rsi'`: RSI period (default: 14)
+- `'ema'`: EMA period (default: 20)
+- `'sma'`: SMA period (default: 20)
+- `'macd_fast'`: MACD fast EMA period (default: 12)
+- `'macd_slow'`: MACD slow EMA period (default: 26)
+- `'macd_signal'`: MACD signal line period (default: 9)
+- `'bollinger_bands'`: Bollinger Bands SMA period (default: 20)
+- `'bollinger_std_dev'`: Bollinger Bands standard deviation multiplier (default: 2)
+- `'roc'`: Rate of Change period (default: 10)
+- `'roc_of_roc'`: ROC of ROC period (default: 10)
+- `'stoch_rsi_k'`: Stochastic RSI %K smoothing period (default: 3)
+- `'stoch_rsi_d'`: Stochastic RSI %D smoothing period (default: 3)
+- `'atr'`: Average True Range period (default: 14)
+- `'vwma'`: Volume Weighted Moving Average period (default: 20)
+- `'volatility'`: Volatility (rolling standard deviation) period (default: 20)
+- `'price_change'`: Price change calculation (always 1 period)
 
 ### Data Requirements
 
@@ -91,3 +189,18 @@ The module expects OHLCV (Open, High, Low, Close, Volume) data in a pandas DataF
 - `volume` (or `Volume`) - Required for VWMA calculation
 
 The module automatically handles both lowercase and uppercase column names.
+
+### Output Format
+
+- **Successful calculations**: Returns numerical values
+- **Insufficient data**: Returns empty strings (`""`)
+- **Calculation errors**: Returns empty strings (`""`)
+
+This makes it easy to identify missing data and handle it appropriately in your trading applications.
+
+### Performance Characteristics
+
+- **Real-time calculations**: Optimized for single-tick updates
+- **Memory efficient**: Minimal memory overhead for streaming data
+- **Error resilient**: Individual indicator failures don't affect others
+- **Configurable**: Only calculate the indicators you need
