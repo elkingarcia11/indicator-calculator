@@ -214,12 +214,15 @@ class IndicatorCalculator:
         # Calculate the ATR
         return data.rolling(window=period).mean()
     
-    def calculate_all_indicators(self, data: pd.DataFrame, indicator_periods: dict = {}) -> pd.DataFrame:
+    def calculate_all_indicators(self, data: pd.DataFrame, indicator_periods: dict = {}, is_option: bool = False) -> pd.DataFrame:
         """
         Calculate all technical indicators for the given data
         
         Args:
             data: OHLCV DataFrame
+            indicator_periods: Dictionary with indicator names and their periods
+            is_option: If True, uses 'mark_price' instead of 'close' for price-based indicators
+            price_column: Specific column name to use for price-based indicators (overrides is_option)
             
         Returns:
             DataFrame with calculated indicators
@@ -228,32 +231,35 @@ class IndicatorCalculator:
             # Make a copy to avoid modifying original data
             result = data.copy()
             
+            # Select the appropriate price column based on asset type
+            price_column = 'mark_price' if is_option else 'close'
+            
             if 'rsi' in indicator_periods:
                 # Calculate RSI
-                result['rsi'] = IndicatorCalculator.calculate_rsi(result['close'], indicator_periods['rsi'])
+                result['rsi'] = IndicatorCalculator.calculate_rsi(result[price_column], indicator_periods['rsi'])
                 
             if 'stoch_rsi_k' in indicator_periods and 'stoch_rsi_d' in indicator_periods:
                 # Calculate Stochastic RSI
-                stoch_rsi_k, stoch_rsi_d = IndicatorCalculator.calculate_stochastic_rsi(result['close'], indicator_periods['stoch_rsi_k'], indicator_periods['stoch_rsi_d'])
+                stoch_rsi_k, stoch_rsi_d = IndicatorCalculator.calculate_stochastic_rsi(result[price_column], indicator_periods['stoch_rsi_k'], indicator_periods['stoch_rsi_d'])
                 result['stoch_rsi_k'] = stoch_rsi_k
                 result['stoch_rsi_d'] = stoch_rsi_d
             
             if 'macd_fast' in indicator_periods and 'macd_slow' in indicator_periods and 'macd_signal' in indicator_periods:
                 # Calculate MACD
-                macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(result['close'], indicator_periods['macd_fast'], indicator_periods['macd_slow'], indicator_periods['macd_signal'])
+                macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(result[price_column], indicator_periods['macd_fast'], indicator_periods['macd_slow'], indicator_periods['macd_signal'])
                 result['macd_line'] = macd_line
                 result['macd_signal'] = signal_line
                 result['macd_histogram'] = histogram
             
             if 'roc' in indicator_periods:
                 # Calculate ROC
-                result['roc'] = IndicatorCalculator.calculate_roc(result['close'], indicator_periods['roc'])
+                result['roc'] = IndicatorCalculator.calculate_roc(result[price_column], indicator_periods['roc'])
                 if 'roc_of_roc' in indicator_periods:
                     result['roc_of_roc'] = IndicatorCalculator.calculate_roc_of_roc(result['roc'], indicator_periods['roc_of_roc'])
             
             if 'ema' in indicator_periods:
                 # Calculate EMAs
-                result['ema'] = IndicatorCalculator.calculate_ema(result['close'], indicator_periods['ema'])
+                result['ema'] = IndicatorCalculator.calculate_ema(result[price_column], indicator_periods['ema'])
             
             if 'vwma' in indicator_periods:
                 # Calculate VWMA
@@ -261,27 +267,27 @@ class IndicatorCalculator:
             
             if 'sma' in indicator_periods:
                 # Calculate SMA
-                result['sma'] = IndicatorCalculator.calculate_sma(result['close'], indicator_periods['sma'])
+                result['sma'] = IndicatorCalculator.calculate_sma(result[price_column], indicator_periods['sma'])
             
             if 'volatility' in indicator_periods:
                 # Calculate Volatility
-                result['volatility'] = IndicatorCalculator.calculate_volatility(result['close'], indicator_periods['volatility'])
+                result['volatility'] = IndicatorCalculator.calculate_volatility(result[price_column], indicator_periods['volatility'])
             
             if 'price_change' in indicator_periods:
                 # Calculate Price Change
-                result['price_change'] = IndicatorCalculator.calculate_price_change(data=result['close'])
+                result['price_change'] = IndicatorCalculator.calculate_price_change(data=result[price_column])
             
             if 'bollinger_bands' in indicator_periods:
                 # Calculate Bollinger Bands
-                result['bollinger_bands'] = IndicatorCalculator.calculate_bollinger_bands(result['close'], indicator_periods['bollinger_bands'])
+                result['bollinger_bands'] = IndicatorCalculator.calculate_bollinger_bands(result[price_column], indicator_periods['bollinger_bands'])
             
             if 'bollinger_bands_width' in indicator_periods:
                 # Calculate Bollinger Bands Width
-                result['bollinger_bands_width'] = IndicatorCalculator.calculate_bollinger_bands_width(result['close'], indicator_periods['bollinger_bands_width'])
+                result['bollinger_bands_width'] = IndicatorCalculator.calculate_bollinger_bands_width(result[price_column], indicator_periods['bollinger_bands_width'])
             
             if 'atr' in indicator_periods:
                 # Calculate ATR
-                result['atr'] = IndicatorCalculator.calculate_atr(result['close'], indicator_periods['atr'])
+                result['atr'] = IndicatorCalculator.calculate_atr(result[price_column], indicator_periods['atr'])
             
             print(f"Calculated {len(result.columns) - len(data.columns)} indicators")
             return result
@@ -290,7 +296,7 @@ class IndicatorCalculator:
             print(f"Error calculating indicators: {str(e)}")
             return data
             
-    def calculate_latest_tick_indicators(self, existing_data: pd.DataFrame, new_row: pd.Series, indicator_periods: dict) -> pd.Series:
+    def calculate_latest_tick_indicators(self, existing_data: pd.DataFrame, new_row: pd.Series, indicator_periods: dict, is_option: bool = False) -> pd.Series:
         """
         Calculate technical indicators for a new tick/row based on existing historical data
         
@@ -298,14 +304,18 @@ class IndicatorCalculator:
             existing_data: Historical OHLCV DataFrame with existing indicators
             new_row: New data row (Series) with OHLCV data
             indicator_periods: Dictionary with indicator names and their periods
+            is_option: If True, uses 'mark_price' instead of 'close' for price-based indicators
             
         Returns:
-            Series with calculated indicator values for the new tick (empty ",," for insufficient data)
+            Series with calculated indicator values for the new tick (empty strings for insufficient data)
         """
         try:
             # Create a temporary dataframe with existing data + new row
             temp_data = existing_data.copy()
             temp_data = pd.concat([temp_data, new_row.to_frame().T], ignore_index=True)
+            
+            # Select the appropriate price column based on asset type
+            price_column = 'mark_price' if is_option else 'close'
             
             # Initialize result series with the new row's basic data
             result = new_row.copy()
@@ -342,23 +352,23 @@ class IndicatorCalculator:
                 
                 try:
                     if period_key == 'rsi' and 'rsi' in self.indicator_functions:
-                        result['rsi'] = self.indicator_functions['rsi'](temp_data, period_value, last_idx)
+                        result['rsi'] = self._calculate_single_rsi(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('rsi')
                         
                     elif period_key == 'ema' and 'ema' in self.indicator_functions:
-                        result['ema'] = self.indicator_functions['ema'](temp_data, period_value, last_idx)
+                        result['ema'] = self._calculate_single_ema(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('ema')
                         
                     elif period_key == 'sma' and 'sma' in self.indicator_functions:
-                        result['sma'] = self.indicator_functions['sma'](temp_data, period_value, last_idx)
+                        result['sma'] = self._calculate_single_sma(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('sma')
                         
                     elif period_key in ['macd_fast', 'macd_slow', 'macd_signal'] and 'macd_line' not in calculated_indicators:
                         # Calculate all MACD components at once
                         if all(k in indicator_periods for k in ['macd_fast', 'macd_slow', 'macd_signal']):
-                            result['macd_line'] = self.indicator_functions['macd_line'](temp_data, indicator_periods, last_idx)
-                            result['macd_signal'] = self.indicator_functions['macd_signal'](temp_data, indicator_periods, last_idx)
-                            result['macd_histogram'] = self.indicator_functions['macd_histogram'](temp_data, indicator_periods, last_idx)
+                            result['macd_line'] = self._calculate_single_macd_line(temp_data, indicator_periods, last_idx, price_column)
+                            result['macd_signal'] = self._calculate_single_macd_signal(temp_data, indicator_periods, last_idx, price_column)
+                            result['macd_histogram'] = self._calculate_single_macd_histogram(temp_data, indicator_periods, last_idx, price_column)
                             calculated_indicators.update(['macd_line', 'macd_signal', 'macd_histogram'])
                         
                     elif period_key == 'bollinger_bands':
@@ -425,10 +435,10 @@ class IndicatorCalculator:
             return result
     
     # Individual indicator calculation functions for single-tick calculations
-    def _calculate_single_rsi(self, temp_data: pd.DataFrame, period: int, last_idx: int) -> float:
+    def _calculate_single_rsi(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate RSI for the latest tick"""
         if len(temp_data) >= period + 1:
-            delta = temp_data['close'].diff()
+            delta = temp_data[price_column].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
             rs = gain / loss
@@ -436,27 +446,27 @@ class IndicatorCalculator:
             return rsi.iloc[last_idx] if not pd.isna(rsi.iloc[last_idx]) else ""
         return ""
     
-    def _calculate_single_ema(self, temp_data: pd.DataFrame, period: int, last_idx: int) -> float:
+    def _calculate_single_ema(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate EMA for the latest tick"""
         if len(temp_data) >= 2:
-            ema = temp_data['close'].ewm(span=period, adjust=False).mean()
+            ema = temp_data[price_column].ewm(span=period, adjust=False).mean()
             return ema.iloc[last_idx] if not pd.isna(ema.iloc[last_idx]) else ""
         return ""
     
-    def _calculate_single_sma(self, temp_data: pd.DataFrame, period: int, last_idx: int) -> float:
+    def _calculate_single_sma(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate SMA for the latest tick"""
         if len(temp_data) >= period:
-            sma = temp_data['close'].rolling(window=period).mean()
+            sma = temp_data[price_column].rolling(window=period).mean()
             return sma.iloc[last_idx] if not pd.isna(sma.iloc[last_idx]) else ""
         return ""
     
-    def _calculate_single_macd_line(self, temp_data: pd.DataFrame, periods: dict, last_idx: int) -> float:
+    def _calculate_single_macd_line(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
         """Calculate MACD line for the latest tick"""
         fast_period = periods.get('macd_fast', 12)
         slow_period = periods.get('macd_slow', 26)
         if len(temp_data) >= slow_period:
-            ema_fast = temp_data['close'].ewm(span=fast_period, adjust=False).mean()
-            ema_slow = temp_data['close'].ewm(span=slow_period, adjust=False).mean()
+            ema_fast = temp_data[price_column].ewm(span=fast_period, adjust=False).mean()
+            ema_slow = temp_data[price_column].ewm(span=slow_period, adjust=False).mean()
             macd_line = ema_fast - ema_slow
             return macd_line.iloc[last_idx] if not pd.isna(macd_line.iloc[last_idx]) else ""
         return ""

@@ -1,6 +1,6 @@
 # Technical Indicators Calculator Module
 
-A Python module for calculating various technical indicators on financial market data, with support for both batch processing and real-time single-tick calculations.
+A Python module for calculating various technical indicators on financial market data, with support for both batch processing and real-time single-tick calculations. Features advanced support for different asset types including stocks, crypto, and options trading.
 
 ## Features
 
@@ -20,6 +20,12 @@ A Python module for calculating various technical indicators on financial market
 - **Bollinger Bands Width** - Width of the Bollinger Bands
 - **ATR (Average True Range)** - Volatility indicator
 
+### Asset Type Support
+
+- **Stocks & Crypto**: Uses `close` prices for calculations
+- **Options Trading**: Uses `mark_price` for more accurate options pricing
+- **Custom Assets**: Flexible column selection for any price source
+
 ## Installation
 
 1. Install dependencies:
@@ -32,7 +38,7 @@ pip install -r requirements.txt
 
 ### Indicator Calculator Module
 
-The `indicator_calculator.py` file contains the `IndicatorCalculator` class, which provides both static methods for calculating technical indicators on historical data and instance methods for real-time calculations.
+The `indicator_calculator.py` file contains the `IndicatorCalculator` class, which provides both static methods for calculating technical indicators on historical data and instance methods for real-time calculations with advanced function mapping architecture.
 
 #### Available Static Methods
 
@@ -52,8 +58,8 @@ The `indicator_calculator.py` file contains the `IndicatorCalculator` class, whi
 
 #### Available Instance Methods
 
-- `calculate_all_indicators(data, indicator_periods={})` - Calculate all indicators for historical data
-- `calculate_latest_tick_indicators(existing_data, new_row, indicator_periods)` - Calculate indicators for a single new tick
+- `calculate_all_indicators(data, indicator_periods={}, is_option=False)` - Calculate all indicators for historical data
+- `calculate_latest_tick_indicators(existing_data, new_row, indicator_periods, is_option=False)` - Calculate indicators for a single new tick
 
 ### Real-Time Indicator Calculation
 
@@ -64,9 +70,13 @@ The `calculate_latest_tick_indicators` method is designed for real-time trading 
 - **Efficient single-tick calculation** - Only calculates indicators for the latest data point
 - **Configurable indicators** - Specify exactly which indicators and periods you need
 - **Error handling** - Returns empty strings for insufficient data or calculation errors
-- **Memory efficient** - Doesn't store unnecessary historical calculations
+- **Memory efficient** - Minimal memory overhead for streaming data
+- **Function mapping architecture** - Clean, maintainable code with isolated calculations
+- **Asset type support** - Automatic price column selection for different asset types
 
-#### Real-Time Usage Example
+#### Real-Time Usage Examples
+
+##### For Stocks and Cryptocurrency:
 
 ```python
 from indicator_calculator import IndicatorCalculator
@@ -94,7 +104,7 @@ indicator_periods = {
     'price_change': 1
 }
 
-# Your existing historical data
+# Your existing historical data (uses 'close' prices)
 existing_data = pd.DataFrame({
     'open': [100, 101, 102, 103],
     'high': [105, 106, 107, 108],
@@ -112,19 +122,62 @@ new_row = pd.Series({
     'volume': 1400
 })
 
-# Calculate indicators for the new tick only
+# Calculate indicators for the new tick (uses 'close' prices)
 result = calculator.calculate_latest_tick_indicators(
     existing_data=existing_data,
     new_row=new_row,
-    indicator_periods=indicator_periods
+    indicator_periods=indicator_periods,
+    is_option=False  # Default: uses 'close' column
 )
 
 print(result)
 # Output includes basic OHLCV data plus calculated indicators
-# Insufficient data indicators will be empty strings ("")
 ```
 
-### Batch Processing Usage Example
+##### For Options Trading:
+
+```python
+from indicator_calculator import IndicatorCalculator
+import pandas as pd
+
+# Create calculator instance
+calculator = IndicatorCalculator()
+
+# Options data with mark_price column
+existing_options_data = pd.DataFrame({
+    'open': [5.20, 5.25, 5.30, 5.35],
+    'high': [5.40, 5.45, 5.50, 5.55],
+    'low': [5.10, 5.15, 5.20, 5.25],
+    'close': [5.30, 5.35, 5.40, 5.45],
+    'mark_price': [5.32, 5.37, 5.42, 5.47],  # More accurate for options
+    'volume': [500, 600, 700, 800]
+})
+
+# New options tick
+new_options_row = pd.Series({
+    'open': 5.45,
+    'high': 5.60,
+    'low': 5.40,
+    'close': 5.55,
+    'mark_price': 5.52,  # Used for calculations when is_option=True
+    'volume': 900
+})
+
+# Calculate indicators using mark_price for options
+result = calculator.calculate_latest_tick_indicators(
+    existing_data=existing_options_data,
+    new_row=new_options_row,
+    indicator_periods=indicator_periods,
+    is_option=True  # Uses 'mark_price' column instead of 'close'
+)
+
+print(result)
+# All price-based indicators (RSI, EMA, SMA, MACD, etc.) calculated using mark_price
+```
+
+### Batch Processing Usage Examples
+
+##### For Regular Assets:
 
 ```python
 from indicator_calculator import IndicatorCalculator
@@ -134,13 +187,13 @@ import pandas as pd
 calculator = IndicatorCalculator()
 
 # Load your OHLCV data
-data = pd.read_csv('your_data.csv')
+data = pd.read_csv('your_stock_data.csv')
 
 # Calculate individual indicators using static methods
 rsi = IndicatorCalculator.calculate_rsi(data['close'], period=14)
 macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(data['close'])
 
-# Or calculate all indicators at once
+# Or calculate all indicators at once (uses 'close' prices)
 indicator_periods = {
     'rsi': 14,
     'macd_fast': 12,
@@ -154,8 +207,29 @@ indicator_periods = {
     'volatility': 20
 }
 
-result = calculator.calculate_all_indicators(data, indicator_periods)
+result = calculator.calculate_all_indicators(data, indicator_periods, is_option=False)
 ```
+
+##### For Options Data:
+
+```python
+# Load options data with mark_price column
+options_data = pd.read_csv('your_options_data.csv')
+
+# Calculate all indicators using mark_price for more accurate options analysis
+result = calculator.calculate_all_indicators(
+    data=options_data,
+    indicator_periods=indicator_periods,
+    is_option=True  # Uses 'mark_price' instead of 'close'
+)
+```
+
+### Price Column Selection Logic
+
+The module intelligently selects the appropriate price column based on asset type:
+
+- **`is_option=False`** (default): Uses `'close'` column for stocks, crypto, forex
+- **`is_option=True`**: Uses `'mark_price'` column for options trading
 
 ### Supported Indicator Periods Configuration
 
@@ -180,13 +254,30 @@ The `indicator_periods` dictionary supports the following keys:
 
 ### Data Requirements
 
-The module expects OHLCV (Open, High, Low, Close, Volume) data in a pandas DataFrame with the following columns:
+#### For Stocks, Crypto, Forex:
 
-- `open` (or `Open`)
-- `high` (or `High`)
-- `low` (or `Low`)
-- `close` (or `Close`)
-- `volume` (or `Volume`) - Required for VWMA calculation
+```python
+data = pd.DataFrame({
+    'open': [...],    # Opening prices
+    'high': [...],    # High prices
+    'low': [...],     # Low prices
+    'close': [...],   # Closing prices (used for calculations)
+    'volume': [...]   # Volume data (required for VWMA)
+})
+```
+
+#### For Options Trading:
+
+```python
+options_data = pd.DataFrame({
+    'open': [...],       # Opening prices
+    'high': [...],       # High prices
+    'low': [...],        # Low prices
+    'close': [...],      # Closing prices
+    'mark_price': [...], # Mark prices (used for calculations when is_option=True)
+    'volume': [...]      # Volume data
+})
+```
 
 The module automatically handles both lowercase and uppercase column names.
 
@@ -198,9 +289,28 @@ The module automatically handles both lowercase and uppercase column names.
 
 This makes it easy to identify missing data and handle it appropriately in your trading applications.
 
+### Architecture Benefits
+
+- **Function Mapping**: Clean separation of concerns with individual calculation functions
+- **Maintainable**: Easy to add new indicators without modifying existing code
+- **Memory Efficient**: No temporary columns created, direct column references
+- **Error Isolation**: Individual indicator failures don't affect others
+- **Testable**: Each indicator calculation can be tested independently
+
 ### Performance Characteristics
 
 - **Real-time calculations**: Optimized for single-tick updates
 - **Memory efficient**: Minimal memory overhead for streaming data
 - **Error resilient**: Individual indicator failures don't affect others
 - **Configurable**: Only calculate the indicators you need
+- **Asset type aware**: Automatic price source selection
+- **No data duplication**: Direct column access without copying data
+
+### Use Cases
+
+- **Algorithmic Trading**: Real-time indicator updates for trading bots
+- **Options Strategy Analysis**: Accurate pricing using mark prices
+- **Portfolio Management**: Multi-asset indicator calculations
+- **Technical Analysis**: Comprehensive indicator suite for market analysis
+- **Backtesting**: Efficient historical indicator calculation
+- **Risk Management**: Volatility and momentum indicators for risk assessment
