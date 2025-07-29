@@ -8,7 +8,7 @@ A Python module for calculating various technical indicators on financial market
 
 - **RSI (Relative Strength Index)** - Momentum oscillator
 - **Stochastic RSI** - Stochastic oscillator applied to RSI (%K and %D)
-- **MACD** - Moving Average Convergence Divergence with signal line and histogram
+- **MACD** - Moving Average Convergence Divergence with signal line
 - **ROC (Rate of Change)** - Price momentum indicator
 - **ROC of ROC** - Second derivative of price change
 - **EMA** - Exponential Moving Averages
@@ -44,7 +44,7 @@ The `indicator_calculator.py` file contains the `IndicatorCalculator` class, whi
 
 - `calculate_rsi(data, period=14)` - Relative Strength Index
 - `calculate_stochastic_rsi(data, period=14, k_period=3, d_period=3)` - Stochastic RSI (%K and %D)
-- `calculate_macd(data, fast_period=12, slow_period=26, signal_period=9)` - MACD (line, signal, histogram)
+- `calculate_macd(data, fast_period=12, slow_period=26, signal_period=9)` - MACD (line, signal)
 - `calculate_roc(data, period=10)` - Rate of Change
 - `calculate_roc_of_roc(data, period=10)` - ROC of ROC (second derivative)
 - `calculate_ema(data, period=20)` - Exponential Moving Average
@@ -191,7 +191,7 @@ data = pd.read_csv('your_stock_data.csv')
 
 # Calculate individual indicators using static methods
 rsi = IndicatorCalculator.calculate_rsi(data['close'], period=14)
-macd_line, signal_line, histogram = IndicatorCalculator.calculate_macd(data['close'])
+macd_line, signal_line = IndicatorCalculator.calculate_macd(data['close'])
 
 # Or calculate all indicators at once (uses 'close' prices)
 indicator_periods = {
