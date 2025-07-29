@@ -377,9 +377,10 @@ class IndicatorCalculator:
                     elif period_key == 'roc' and 'roc' in self.indicator_functions:
                         result['roc'] = self._calculate_single_roc(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('roc')
-                        if period_key == 'roc_of_roc' and 'roc_of_roc' in self.indicator_functions:
-                            result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data, indicator_periods, last_idx)
-                            calculated_indicators.add('roc_of_roc')
+                        
+                    elif period_key == 'roc_of_roc' and 'roc_of_roc' in self.indicator_functions:
+                        result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data, indicator_periods, last_idx, price_column)
+                        calculated_indicators.add('roc_of_roc')
                         
                     elif period_key in ['stoch_rsi_k', 'stoch_rsi_d'] and 'stoch_rsi_k' not in calculated_indicators:
                         # Calculate both Stochastic RSI components if both periods are provided
@@ -525,13 +526,16 @@ class IndicatorCalculator:
             return roc.iloc[last_idx] if not pd.isna(roc.iloc[last_idx]) else float('nan')
         return float('nan')
     
-    def _calculate_single_roc_of_roc(self, temp_data: pd.DataFrame, periods: dict, last_idx: int) -> float:
-        """
-        Calculate ROC of ROC for the latest tick using the existing 'roc' column.
-        """
-        roc_of_roc_period = periods.get('roc_of_roc', 10)
-        if 'roc' in temp_data.columns and len(temp_data) > roc_of_roc_period:
-            roc_of_roc = ((temp_data['roc'] - temp_data['roc'].shift(roc_of_roc_period)) / temp_data['roc'].shift(roc_of_roc_period)) * 100
+    def _calculate_single_roc_of_roc(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
+        """Calculate ROC of ROC for the latest tick"""
+        roc_period = periods.get('roc', 10)  # Get ROC period from config  
+        roc_of_roc_period = periods.get('roc_of_roc', 10)  # Get ROC of ROC period from config
+        
+        if len(temp_data) > roc_period + roc_of_roc_period:  # Need enough data for both calculations
+            # First calculate ROC using the roc period
+            roc = ((temp_data[price_column] - temp_data[price_column].shift(roc_period)) / temp_data[price_column].shift(roc_period)) * 100
+            # Then calculate ROC of ROC using the roc_of_roc period  
+            roc_of_roc = roc.pct_change(periods=roc_of_roc_period) * 100
             return roc_of_roc.iloc[last_idx] if not pd.isna(roc_of_roc.iloc[last_idx]) else float('nan')
         return float('nan')
     
@@ -586,7 +590,7 @@ class IndicatorCalculator:
     
     def _calculate_single_vwma(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate VWMA for the latest tick"""
-        has_enough_data = len(temp_data) > period  # Need past 'period' periods + current period
+        has_enough_data = len(temp_data) >= period  # VWMA uses lookback window ending at current point
         has_volume_column = 'volume' in temp_data.columns
         
 
