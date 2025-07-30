@@ -378,24 +378,8 @@ class IndicatorCalculator:
                         result['roc'] = self._calculate_single_roc(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('roc')
                         
-<<<<<<< HEAD
-                        # After calculating ROC, check if we need to calculate ROC of ROC
-                        if 'roc_of_roc' in indicator_periods and 'roc_of_roc' in self.indicator_functions:
-                            # Calculate ROC for the entire temp_data DataFrame to create the full ROC column
-                            temp_data_with_roc = temp_data.copy()
-                            roc_period = period_value
-                            temp_data_with_roc['roc'] = ((temp_data_with_roc[price_column] - temp_data_with_roc[price_column].shift(roc_period)) / temp_data_with_roc[price_column].shift(roc_period)) * 100
-                            result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data_with_roc, indicator_periods, last_idx)
-                            calculated_indicators.add('roc_of_roc')
-=======
                     elif period_key == 'roc_of_roc' and 'roc_of_roc' in self.indicator_functions:
                         result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data, indicator_periods, last_idx, price_column)
-                        calculated_indicators.add('roc_of_roc')
->>>>>>> 11819de8bbe2b893a8351fedbca317ceb9db5184
-                        
-                    elif period_key == 'roc_of_roc' and 'roc_of_roc' in self.indicator_functions and 'roc_of_roc' not in calculated_indicators:
-                        # ROC of ROC as standalone (in case ROC was calculated in a previous iteration)
-                        result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data, indicator_periods, last_idx)
                         calculated_indicators.add('roc_of_roc')
                         
                     elif period_key in ['stoch_rsi_k', 'stoch_rsi_d'] and 'stoch_rsi_k' not in calculated_indicators:
