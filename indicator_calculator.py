@@ -54,30 +54,41 @@ class IndicatorCalculator:
     def calculate_stochastic_rsi(data: pd.DataFrame, period: int = 14, k_period: int = 3, d_period: int = 3, price_column: str = 'close') -> tuple:
         """
         Calculate Stochastic RSI
+        %K starts at Row [Period]
+        %D starts at Row [K Period + D Period - 1]
         
         Args:
             data: Price series
-            period: RSI period
-            k_period: %K period
-            d_period: %D period
+            period: RSI period (for lookback)
+            k_period: %K smoothing period
+            d_period: %D smoothing period
             
         Returns:
             Tuple of (%K, %D) values
         """
-        # Calculate the RSI
+        if len(data) == 0:
+            empty_series = pd.Series(index=data.index, dtype=float)
+            return empty_series, empty_series
+        
+        # Calculate the RSI (starts immediately)
         rsi = IndicatorCalculator.calculate_rsi(data, period, price_column)
-        # Calculate the Stochastic RSI %K
-        stoch_rsi_k = (rsi - rsi.rolling(window=period).min()) / (rsi.rolling(window=period).max() - rsi.rolling(window=period).min())
-        # Calculate the Stochastic RSI %K
-        stoch_rsi_k = stoch_rsi_k.rolling(window=k_period).mean() * 100
-        # Calculate the Stochastic RSI %D
+        
+        # Stochastic %K: starts at Row [Period] - needs full lookback period
+        stoch_rsi_raw = (rsi - rsi.rolling(window=period).min()) / (rsi.rolling(window=period).max() - rsi.rolling(window=period).min())
+        # Apply %K smoothing
+        stoch_rsi_k = stoch_rsi_raw.rolling(window=k_period).mean() * 100
+        
+        # Stochastic %D: starts at Row [K Period + D Period - 1]
+        # If %K=14, %D=3: Row 16 (14+3-1)
         stoch_rsi_d = stoch_rsi_k.rolling(window=d_period).mean()
+        
         return stoch_rsi_k, stoch_rsi_d
     
     @staticmethod
     def calculate_macd(data: pd.DataFrame, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9, price_column: str = 'close') -> tuple:
         """
         Calculate MACD (Moving Average Convergence Divergence)
+        Both MACD line and Signal line start from Row 1 (platform behavior)
         
         Args:
             data: Price series
@@ -88,91 +99,117 @@ class IndicatorCalculator:
         Returns:
             Tuple of (MACD line, Signal line)
         """
-        # Calculate the fast EMA
-        ema_fast = data[price_column].ewm(span=fast_period, adjust=False).mean()
-        # Calculate the slow EMA
-        ema_slow = data[price_column].ewm(span=slow_period, adjust=False).mean()
-        # Calculate the MACD line
+        if len(data) == 0:
+            empty_series = pd.Series(index=data.index, dtype=float)
+            return empty_series, empty_series
+        
+        # Platform behavior: Both EMAs start immediately
+        ema_fast = IndicatorCalculator.calculate_ema(data, fast_period, price_column)
+        ema_slow = IndicatorCalculator.calculate_ema(data, slow_period, price_column)
+        
+        # MACD line: difference calculated immediately from Row 1
         macd_line = ema_fast - ema_slow
-        # Calculate the signal line
+        
+        # Signal line: EMA of MACD line, starts immediately from Row 1
         signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
+        
         return macd_line, signal_line
     
     @staticmethod
-    def calculate_roc(data: pd.DataFrame, period: int = 10, price_column: str = 'close') -> pd.Series:
+    def calculate_roc(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Rate of Change (ROC)
+        Starts at Row [Period + 1] - needs current price vs price N periods ago
         
         Args:
-            data: Price series
+            data: Price series DataFrame
             period: Lookback period
+            price_column: Column name to use for calculation
             
         Returns:
-            ROC values as pandas Series
+            ROC values as pandas Series (starts at Row [Period + 1])
         """
-        # Calculate the Rate of Change
+        if len(data) == 0:
+            return pd.Series(index=data.index, dtype=float)
+        
+        # ROC starts at Row [Period + 1] - naturally handled by shift()
+        # ROC 9 starts at Row 10, ROC 14 starts at Row 15
         return ((data[price_column] - data[price_column].shift(period)) / data[price_column].shift(period)) * 100
     
     @staticmethod
     def calculate_roc_of_roc(data: pd.DataFrame, roc_of_roc_period: int = 10) -> pd.Series:
         """
         Calculate ROC of ROC using the existing 'roc' column.
+        Starts at Row [2×Period + 1] - needs ROC to be established first
         """
-        # should start calculating roc of roc after roc_period
+        if len(data) == 0 or 'roc' not in data.columns:
+            return pd.Series(index=data.index, dtype=float)
+        
+        # ROC of ROC starts at Row [2×Period + 1]
+        # First ROC appears at row [Period + 1], then need another [Period] periods
+        # For ROC of ROC 18: Row 37 (18 + 18 + 1)
         roc = data['roc']
         roc_of_roc = ((roc - roc.shift(roc_of_roc_period)) / roc.shift(roc_of_roc_period)) * 100
         return roc_of_roc
     
     @staticmethod
-    def calculate_ema(data: pd.DataFrame, period: int = 20, price_column: str = 'close') -> pd.Series:
+    def calculate_ema(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Exponential Moving Average (EMA)
+        Starts immediately from Row 1 using first price as seed (platform behavior)
         
         Args:
-            data: Price series
+            data: Price series DataFrame
             period: EMA period
+            price_column: Column name to use for calculation
             
         Returns:
-            EMA values as pandas Series
+            EMA values as pandas Series (starts from Row 1)
         """
-        # Calculate the EMA
+        if len(data) == 0:
+            return pd.Series(index=data.index, dtype=float)
+        
+        # Platform behavior: EMA starts immediately from Row 1
+        # Use pandas EMA with adjust=False for immediate start
         return data[price_column].ewm(span=period, adjust=False).mean()
     
     @staticmethod
-    def calculate_vwma(data: pd.DataFrame, period: int = 20, is_options: bool = False) -> pd.Series:
+    def calculate_vwma(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Volume Weighted Moving Average (VWMA)
+        Starts at Row [Period] - needs full window of price/volume data
         
         Args:
-            data: DataFrame with 'Close' and 'Volume' columns
+            data: DataFrame with price and volume columns
             period: VWMA period
+            price_column: Column name to use for calculation
             
         Returns:
-            VWMA values as pandas Series
+            VWMA values as pandas Series (starts at Row [Period])
         """
-        if is_options:
-            typical_price = data['last_price']
-        elif all(col in data.columns for col in ['high', 'low']):
-            typical_price = (data['high'] + data['low'] + data['close']) / 3
-        else:
-            typical_price = data['close']
+        if len(data) == 0:
+            return pd.Series(index=data.index, dtype=float)
         
-        # Calculate the VWMA
-        numerator = (typical_price * data['volume']).rolling(window=period).sum()
-        denominator = data['volume'].rolling(window=period).sum()
+        # VWMA needs full window - starts at Row [Period] 
+        # Calculate VWMA using rolling windows (naturally handles the timing)
+        price_volume = data[price_column] * data['volume']
+        vwma = price_volume.rolling(window=period).sum() / data['volume'].rolling(window=period).sum()
         
-        # Avoid division by zero
-        vwma = numerator / denominator.replace(0, float('nan'))
-        
-        # Return the VWMA
         return vwma
 
     @staticmethod
-    def calculate_sma(data: pd.DataFrame, period: int = 20, price_column: str = 'close') -> pd.Series:
+    def calculate_sma(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Simple Moving Average (SMA)
+        
+        Args:
+            data: Price series DataFrame
+            period: SMA period
+            price_column: Column name to use for calculation
+            
+        Returns:
+            SMA values as pandas Series (NaN until sufficient data available)
         """
-        # Calculate the SMA
         return data[price_column].rolling(window=period).mean()
     
     @staticmethod
@@ -184,115 +221,195 @@ class IndicatorCalculator:
         return data[price_column].pct_change()
     
     @staticmethod
-    def calculate_volatility(data: pd.DataFrame, period: int = 20, price_column: str = 'close') -> pd.Series:
+    def calculate_volatility(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
-        Calculate Volatility
+        Calculate Volatility (rolling standard deviation)
+        
+        Args:
+            data: Price series DataFrame
+            period: Period for volatility calculation
+            price_column: Column name to use for calculation
+            
+        Returns:
+            Volatility values as pandas Series (NaN until sufficient data available)
         """
-        # Calculate the Volatility
         return data[price_column].rolling(window=period).std()
     
     @staticmethod
-    def calculate_bollinger_bands(data: pd.DataFrame, period: int = 20, std_dev: int = 2, price_column: str = 'close') -> tuple:
+    def calculate_bollinger_bands(data: pd.DataFrame, period: int, std_dev: int, price_column: str = 'close') -> tuple:
         """
         Calculate Bollinger Bands
+        
+        Args:
+            data: Price series DataFrame
+            period: Period for moving average and standard deviation
+            std_dev: Number of standard deviations for bands
+            price_column: Column name to use for calculation
+            
+        Returns:
+            Tuple of (upper_band, lower_band) as pandas Series
         """
-        # Calculate the Bollinger Bands
-        return data[price_column].rolling(window=period).mean(), data[price_column].rolling(window=period).std() * std_dev
+        sma = data[price_column].rolling(window=period).mean()
+        std = data[price_column].rolling(window=period).std()
+        upper_band = sma + (std * std_dev)
+        lower_band = sma - (std * std_dev)
+        return upper_band, lower_band
     
     @staticmethod
-    def calculate_bollinger_bands_width(data: pd.DataFrame, period: int = 20, std_dev: int = 2, price_column: str = 'close') -> pd.Series:
+    def calculate_bollinger_bands_width(data: pd.DataFrame, period: int, std_dev: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Bollinger Bands Width
+        
+        Args:
+            data: Price series DataFrame
+            period: Period for standard deviation calculation
+            std_dev: Number of standard deviations for width
+            price_column: Column name to use for calculation
+            
+        Returns:
+            Bollinger Bands width as pandas Series
         """
-        # Calculate the Bollinger Bands
-        return data[price_column].rolling(window=period).std() * std_dev
+        return data[price_column].rolling(window=period).std() * std_dev * 2  # Width is 2 * std_dev * std
         
     @staticmethod
-    def calculate_atr(data: pd.DataFrame, period: int = 14, price_column: str = 'close') -> pd.Series:
+    def calculate_atr(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
         """
         Calculate Average True Range (ATR)
+        
+        Args:
+            data: DataFrame with high, low, close columns
+            period: Period for ATR calculation
+            price_column: Not used for ATR (included for consistency)
+            
+        Returns:
+            ATR values as pandas Series (NaN until sufficient data available)
         """
-        # Calculate the ATR
-        return data[price_column].rolling(window=period).mean()
+        # ATR requires high, low, close columns
+        if not all(col in data.columns for col in ['high_price', 'low_price', 'close_price']):
+            # Fallback to simple volatility if proper OHLC not available
+            return data[price_column].rolling(window=period).std()
+        
+        # Calculate True Range
+        high_low = data['high_price'] - data['low_price']
+        high_close = abs(data['high_price'] - data['close_price'].shift())
+        low_close = abs(data['low_price'] - data['close_price'].shift())
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        
+        # Calculate ATR as moving average of True Range
+        return true_range.rolling(window=period).mean()
     
-    def calculate_all_indicators(self, data: pd.DataFrame, indicator_periods: dict = {}, is_option: bool = False) -> pd.DataFrame:
+    def calculate_all_indicators(self, data: pd.DataFrame, indicator_periods: dict, price_column: str = 'close') -> pd.DataFrame:
         """
-        Calculate all technical indicators for the given data
+        Calculate requested technical indicators for the given data.
+        Only calculates indicators that are explicitly requested in indicator_periods.
         
         Args:
             data: OHLCV DataFrame
-            indicator_periods: Dictionary with indicator names and their periods
+            indicator_periods: Dictionary with indicator names and their periods (required)
             is_option: If True, uses 'last_price' instead of 'close' for price-based indicators
             price_column: Specific column name to use for price-based indicators (overrides is_option)
             
         Returns:
-            DataFrame with calculated indicators
+            DataFrame with calculated indicators (NaN values until sufficient periods available)
         """
-        try:
-            # Make a copy to avoid modifying original data
-            result = data.copy()
+        # Make a copy to avoid modifying original data
+        result = data.copy()
+        
+        # RSI
+        if 'rsi' in indicator_periods:
+            result['rsi'] = self.calculate_rsi(result, indicator_periods['rsi'], price_column)
             
-            # Select the appropriate price column based on asset type
-            price_column = 'last_price' if is_option else 'close'
+        # Stochastic RSI (requires all three parameters)
+        if all(key in indicator_periods for key in ['stoch_rsi_period', 'stoch_rsi_k', 'stoch_rsi_d']):
+            stoch_rsi_k, stoch_rsi_d = self.calculate_stochastic_rsi(
+                result, 
+                indicator_periods['stoch_rsi_period'], 
+                indicator_periods['stoch_rsi_k'], 
+                indicator_periods['stoch_rsi_d'], 
+                price_column
+            )
+            result['stoch_rsi_k'] = stoch_rsi_k
+            result['stoch_rsi_d'] = stoch_rsi_d
+        
+        # MACD (requires all three parameters)
+        if all(key in indicator_periods for key in ['macd_fast', 'macd_slow', 'macd_signal']):
+            macd_line, signal_line = self.calculate_macd(
+                result, 
+                indicator_periods['macd_fast'], 
+                indicator_periods['macd_slow'], 
+                indicator_periods['macd_signal'], 
+                price_column
+            )
+            result['macd_line'] = macd_line
+            result['macd_signal'] = signal_line
+        
+        # Rate of Change
+        if 'roc' in indicator_periods:
+            result['roc'] = self.calculate_roc(result, indicator_periods['roc'], price_column)
             
-            if 'rsi' in indicator_periods:
-                # Calculate RSI
-                result['rsi'] = IndicatorCalculator.calculate_rsi(result, indicator_periods['rsi'], price_column)
-                
-            if 'stoch_rsi_k' in indicator_periods and 'stoch_rsi_d' in indicator_periods and 'stoch_rsi_period' in indicator_periods:
-                # Calculate Stochastic RSI
-                stoch_rsi_k, stoch_rsi_d = IndicatorCalculator.calculate_stochastic_rsi(result,indicator_periods['stoch_rsi_period'], indicator_periods['stoch_rsi_k'], indicator_periods['stoch_rsi_d'], price_column)
-                result['stoch_rsi_k'] = stoch_rsi_k
-                result['stoch_rsi_d'] = stoch_rsi_d
+        # Rate of Change of Rate of Change (requires ROC to be calculated first)
+        if 'roc_of_roc' in indicator_periods and 'roc' in result.columns:
+            result['roc_of_roc'] = self.calculate_roc_of_roc(result, indicator_periods['roc_of_roc'])
+        
+        # Exponential Moving Average
+        if 'ema' in indicator_periods:
+            result['ema'] = self.calculate_ema(result, indicator_periods['ema'], price_column)
+        
+        # EMA variants
+        if 'ema_fast' in indicator_periods:
+            result['ema_fast'] = self.calculate_ema(result, indicator_periods['ema_fast'], price_column)
+        
+        if 'ema_slow' in indicator_periods:
+            result['ema_slow'] = self.calculate_ema(result, indicator_periods['ema_slow'], price_column)
+        
+        # Volume Weighted Moving Average
+        if 'vwma' in indicator_periods:
+            result['vwma'] = self.calculate_vwma(result, indicator_periods['vwma'], price_column)
+        
+        # VWMA variants
+        if 'vwma_fast' in indicator_periods:
+            result['vwma_fast'] = self.calculate_vwma(result, indicator_periods['vwma_fast'], price_column)
             
-            if 'macd_fast' in indicator_periods and 'macd_slow' in indicator_periods and 'macd_signal' in indicator_periods:
-                # Calculate MACD
-                macd_line, signal_line = IndicatorCalculator.calculate_macd(result, indicator_periods['macd_fast'], indicator_periods['macd_slow'], indicator_periods['macd_signal'], price_column)
-                result['macd_line'] = macd_line
-                result['macd_signal'] = signal_line
+        if 'vwma_slow' in indicator_periods:
+            result['vwma_slow'] = self.calculate_vwma(result, indicator_periods['vwma_slow'], price_column)
+        
+        # Simple Moving Average
+        if 'sma' in indicator_periods:
+            result['sma'] = self.calculate_sma(result, indicator_periods['sma'], price_column)
+        
+        # Volatility
+        if 'volatility' in indicator_periods:
+            result['volatility'] = self.calculate_volatility(result, indicator_periods['volatility'], price_column)
+        
+        # Price Change
+        if 'price_change' in indicator_periods:
+            result['price_change'] = self.calculate_price_change(result, price_column)
+        
+        # Average True Range
+        if 'atr' in indicator_periods:
+            result['atr'] = self.calculate_atr(result, indicator_periods['atr'], price_column)
+        
+        # Bollinger Bands (requires period and std_dev)
+        if 'bollinger_period' in indicator_periods and 'bollinger_std' in indicator_periods:
+            upper, lower = self.calculate_bollinger_bands(
+                result, 
+                indicator_periods['bollinger_period'], 
+                indicator_periods['bollinger_std'], 
+                price_column
+            )
+            result['bollinger_upper'] = upper
+            result['bollinger_lower'] = lower
             
-            if 'roc' in indicator_periods:
-                # Calculate ROC_
-                result['roc'] = IndicatorCalculator.calculate_roc(result, indicator_periods['roc'], price_column)
-                if 'roc_of_roc' in indicator_periods:
-                    result['roc_of_roc'] = IndicatorCalculator.calculate_roc_of_roc(result, indicator_periods['roc_of_roc'])
-            
-            if 'ema' in indicator_periods:
-                # Calculate EMAs
-                result['ema'] = IndicatorCalculator.calculate_ema(result, indicator_periods['ema'], price_column)
-            
-            if 'vwma' in indicator_periods:
-                # Calculate VWMA
-                result['vwma'] = IndicatorCalculator.calculate_vwma(result, indicator_periods['vwma'], is_option)
-            
-            if 'sma' in indicator_periods:
-                # Calculate SMA
-                result['sma'] = IndicatorCalculator.calculate_sma(result, indicator_periods['sma'], price_column)
-            
-            if 'volatility' in indicator_periods:
-                # Calculate Volatility
-                result['volatility'] = IndicatorCalculator.calculate_volatility(result, indicator_periods['volatility'], price_column)
-            
-            if 'price_change' in indicator_periods:
-                # Calculate Price Change
-                result['price_change'] = IndicatorCalculator.calculate_price_change(data=result, price_column=price_column)
-            
-            if 'bollinger_bands' in indicator_periods:
-                # Calculate Bollinger Bands
-                result['bollinger_bands'] = IndicatorCalculator.calculate_bollinger_bands(result, indicator_periods['bollinger_bands'], price_column)
-            
-            if 'bollinger_bands_width' in indicator_periods:
-                # Calculate Bollinger Bands Width
-                result['bollinger_bands_width'] = IndicatorCalculator.calculate_bollinger_bands_width(result, indicator_periods['bollinger_bands_width'], price_column)
-            
-            if 'atr' in indicator_periods:
-                # Calculate ATR
-                result['atr'] = IndicatorCalculator.calculate_atr(result, indicator_periods['atr'], price_column)
-            return result
-            
-        except Exception as e:
-            print(f"Error calculating indicators: {str(e)}")
-            return data
+        # Bollinger Bands Width
+        if 'bollinger_period' in indicator_periods and 'bollinger_std' in indicator_periods:
+            result['bollinger_bands_width'] = self.calculate_bollinger_bands_width(
+                result, 
+                indicator_periods['bollinger_period'], 
+                indicator_periods['bollinger_std'], 
+                price_column
+            )
+        
+        return result
             
     def calculate_latest_tick_indicators(self, existing_data: pd.DataFrame, new_row: pd.Series, indicator_periods: dict, is_option: bool = False) -> pd.Series:
         """
@@ -447,11 +564,23 @@ class IndicatorCalculator:
         return float('nan')
     
     def _calculate_single_ema(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate EMA for the latest tick"""
-        if len(temp_data) > period:  # Need period+1 data points for meaningful EMA
-            ema = temp_data[price_column].ewm(span=period, adjust=False).mean()
-            return ema.iloc[last_idx] if not pd.isna(ema.iloc[last_idx]) else float('nan')
-        return float('nan')
+        """Calculate EMA for the latest tick - starts from Row 1 (platform behavior)"""
+        if len(temp_data) == 0:
+            return float('nan')
+        
+        # Platform behavior: EMA starts immediately from Row 1
+        # Check if we have existing EMA data to build incrementally from
+        if 'ema' in temp_data.columns and last_idx > 0:
+            prev_ema = temp_data['ema'].iloc[last_idx - 1]
+            if pd.notna(prev_ema):
+                # Incremental EMA calculation: EMA_new = α * Price_new + (1-α) * EMA_prev
+                alpha = 2 / (period + 1)
+                current_price = temp_data[price_column].iloc[last_idx]
+                return alpha * current_price + (1 - alpha) * prev_ema
+        
+        # Fallback: calculate from scratch - starts immediately from Row 1
+        ema = temp_data[price_column].ewm(span=period, adjust=False).mean()
+        return ema.iloc[last_idx] if not pd.isna(ema.iloc[last_idx]) else float('nan')
     
     def _calculate_single_sma(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate SMA for the latest tick"""
@@ -461,28 +590,63 @@ class IndicatorCalculator:
         return float('nan')
     
     def _calculate_single_macd_line(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate MACD line for the latest tick"""
+        """Calculate MACD line for the latest tick - starts from Row 1 (platform behavior)"""
         fast_period = periods.get('macd_fast', 12)
         slow_period = periods.get('macd_slow', 26)
-        if len(temp_data) > slow_period:  # Need past slow_period periods + current
-            ema_fast = temp_data[price_column].ewm(span=fast_period, adjust=False).mean()
-            ema_slow = temp_data[price_column].ewm(span=slow_period, adjust=False).mean()
-            macd_line = ema_fast - ema_slow
-            return macd_line.iloc[last_idx] if not pd.isna(macd_line.iloc[last_idx]) else float('nan')
-        return float('nan')
+        
+        if len(temp_data) == 0:
+            return float('nan')
+        
+        # Platform behavior: MACD starts immediately from Row 1
+        # Check if we have existing EMA data for incremental calculation
+        if 'ema_fast' in temp_data.columns and 'ema_slow' in temp_data.columns and last_idx > 0:
+            prev_fast_ema = temp_data['ema_fast'].iloc[last_idx - 1]
+            prev_slow_ema = temp_data['ema_slow'].iloc[last_idx - 1]
+            
+            if pd.notna(prev_fast_ema) and pd.notna(prev_slow_ema):
+                # Incremental EMA calculation
+                alpha_fast = 2 / (fast_period + 1)
+                alpha_slow = 2 / (slow_period + 1)
+                current_price = temp_data[price_column].iloc[last_idx]
+                
+                new_fast_ema = alpha_fast * current_price + (1 - alpha_fast) * prev_fast_ema
+                new_slow_ema = alpha_slow * current_price + (1 - alpha_slow) * prev_slow_ema
+                
+                return new_fast_ema - new_slow_ema
+        
+        # Fallback: calculate from scratch - starts immediately from Row 1
+        ema_fast = temp_data[price_column].ewm(span=fast_period, adjust=False).mean()
+        ema_slow = temp_data[price_column].ewm(span=slow_period, adjust=False).mean()
+        macd_line = ema_fast - ema_slow
+        return macd_line.iloc[last_idx] if not pd.isna(macd_line.iloc[last_idx]) else float('nan')
     
     def _calculate_single_macd_signal(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate MACD signal for the latest tick"""
+        """Calculate MACD signal for the latest tick - starts from Row 1 (platform behavior)"""
+        signal_period = periods.get('macd_signal', 9)
+        
+        if len(temp_data) == 0:
+            return float('nan')
+        
+        # Platform behavior: MACD signal starts immediately from Row 1
+        # Check if we have existing MACD signal data for incremental calculation
+        if 'macd_signal' in temp_data.columns and 'macd_line' in temp_data.columns and last_idx > 0:
+            prev_signal = temp_data['macd_signal'].iloc[last_idx - 1]
+            current_macd = temp_data['macd_line'].iloc[last_idx]
+            
+            if pd.notna(prev_signal) and pd.notna(current_macd):
+                # Incremental signal EMA calculation
+                alpha = 2 / (signal_period + 1)
+                return alpha * current_macd + (1 - alpha) * prev_signal
+        
+        # Fallback: calculate from scratch - starts immediately from Row 1
         fast_period = periods.get('macd_fast', 12)
         slow_period = periods.get('macd_slow', 26)
-        signal_period = periods.get('macd_signal', 9)
-        if len(temp_data) > slow_period + signal_period - 1:  # Need MACD line + signal_period of MACD history
-            ema_fast = temp_data[price_column].ewm(span=fast_period, adjust=False).mean()
-            ema_slow = temp_data[price_column].ewm(span=slow_period, adjust=False).mean()
-            macd_line = ema_fast - ema_slow
-            signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
-            return signal_line.iloc[last_idx] if not pd.isna(signal_line.iloc[last_idx]) else float('nan')
-        return float('nan')
+        
+        ema_fast = temp_data[price_column].ewm(span=fast_period, adjust=False).mean()
+        ema_slow = temp_data[price_column].ewm(span=slow_period, adjust=False).mean()
+        macd_line = ema_fast - ema_slow
+        signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
+        return signal_line.iloc[last_idx] if not pd.isna(signal_line.iloc[last_idx]) else float('nan')
     
     def _calculate_single_bollinger_upper(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
         """Calculate Bollinger upper band for the latest tick"""
@@ -520,23 +684,32 @@ class IndicatorCalculator:
         return float('nan')
     
     def _calculate_single_roc(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate ROC for the latest tick"""
-        if len(temp_data) > period:  # Need period+1 data points to shift back 'period' positions
-            roc = ((temp_data[price_column] - temp_data[price_column].shift(period)) / temp_data[price_column].shift(period)) * 100
-            return roc.iloc[last_idx] if not pd.isna(roc.iloc[last_idx]) else float('nan')
-        return float('nan')
+        """Calculate ROC for the latest tick using direct calculation for maximum efficiency"""
+        if len(temp_data) <= period or last_idx < period:
+            return float('nan')
+        
+        # Direct ROC calculation: (current_price - past_price) / past_price * 100
+        current_price = temp_data[price_column].iloc[last_idx]
+        past_price = temp_data[price_column].iloc[last_idx - period]
+        
+        if pd.isna(current_price) or pd.isna(past_price) or past_price == 0:
+            return float('nan')
+        
+        return ((current_price - past_price) / past_price) * 100
     
     def _calculate_single_roc_of_roc(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate ROC of ROC for the latest tick"""
-        roc_period = periods.get('roc', 10)  # Get ROC period from config  
-        roc_of_roc_period = periods.get('roc_of_roc', 10)  # Get ROC of ROC period from config
+        """Calculate ROC of ROC for the latest tick using existing ROC data for maximum efficiency"""
+        roc_of_roc_period = periods.get('roc_of_roc', 10)
         
-        if len(temp_data) > roc_period + roc_of_roc_period:  # Need enough data for both calculations
-            # First calculate ROC using the roc period
-            roc = ((temp_data[price_column] - temp_data[price_column].shift(roc_period)) / temp_data[price_column].shift(roc_period)) * 100
-            # Then calculate ROC of ROC using the roc_of_roc period  
-            roc_of_roc = roc.pct_change(periods=roc_of_roc_period) * 100
-            return roc_of_roc.iloc[last_idx] if not pd.isna(roc_of_roc.iloc[last_idx]) else float('nan')
+        # Check if we have existing ROC data to use
+        if 'roc' in temp_data.columns and last_idx >= roc_of_roc_period:
+            current_roc = temp_data['roc'].iloc[last_idx]
+            past_roc = temp_data['roc'].iloc[last_idx - roc_of_roc_period]
+            
+            if pd.notna(current_roc) and pd.notna(past_roc) and past_roc != 0:
+                # Direct ROC of ROC calculation: (current_roc - past_roc) / past_roc * 100
+                return ((current_roc - past_roc) / past_roc) * 100
+        
         return float('nan')
     
     def _calculate_single_stoch_rsi_k(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
@@ -589,29 +762,28 @@ class IndicatorCalculator:
         return float('nan')
     
     def _calculate_single_vwma(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate VWMA for the latest tick"""
-        has_enough_data = len(temp_data) >= period  # VWMA uses lookback window ending at current point
-        has_volume_column = 'volume' in temp_data.columns
+        """Calculate VWMA for the latest tick using direct window calculation for maximum efficiency"""
+        if len(temp_data) < period or last_idx < period - 1:
+            return float('nan')
         
-
+        if 'volume' not in temp_data.columns:
+            return float('nan')
         
-        if has_enough_data and has_volume_column:
-            # For options, use last_price; for others, use typical price if high/low are available
-            if price_column == 'last_price':  # Options data
-                typical_price = temp_data[price_column]
-            elif all(col in temp_data.columns for col in ['high', 'low']):
-                typical_price = (temp_data['high'] + temp_data['low'] + temp_data[price_column]) / 3
-            else:
-                typical_price = temp_data[price_column]
-            volume = temp_data['volume'].fillna(1)
-            
-
-            
-            vwma = (typical_price * volume).rolling(window=period).sum() / volume.rolling(window=period).sum()
-            result = vwma.iloc[last_idx] if not pd.isna(vwma.iloc[last_idx]) else float('nan')
-            
-            return result
-        return float('nan')
+        # Calculate VWMA using the exact window - matching static method logic
+        start_idx = last_idx - period + 1
+        
+        # Get the price and volume windows
+        price_window = temp_data[price_column].iloc[start_idx:last_idx + 1]
+        volume_window = temp_data['volume'].iloc[start_idx:last_idx + 1]
+        
+        # Calculate VWMA: sum(price * volume) / sum(volume)
+        numerator = (price_window * volume_window).sum()
+        denominator = volume_window.sum()
+        
+        if denominator == 0 or pd.isna(denominator):
+            return float('nan')
+        
+        return numerator / denominator
     
     def _calculate_single_volatility(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
         """Calculate volatility for the latest tick"""
