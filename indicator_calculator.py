@@ -20,7 +20,6 @@ class IndicatorCalculator:
             'stoch_rsi_d': self._calculate_single_stoch_rsi_d,
             'atr': self._calculate_single_atr,
             'vwma': self._calculate_single_vwma,
-            'volatility': self._calculate_single_volatility,
             'price_change': self._calculate_single_price_change
         }
     
@@ -221,21 +220,6 @@ class IndicatorCalculator:
         return data[price_column].pct_change()
     
     @staticmethod
-    def calculate_volatility(data: pd.DataFrame, period: int, price_column: str = 'close') -> pd.Series:
-        """
-        Calculate Volatility (rolling standard deviation)
-        
-        Args:
-            data: Price series DataFrame
-            period: Period for volatility calculation
-            price_column: Column name to use for calculation
-            
-        Returns:
-            Volatility values as pandas Series (NaN until sufficient data available)
-        """
-        return data[price_column].rolling(window=period).std()
-    
-    @staticmethod
     def calculate_bollinger_bands(data: pd.DataFrame, period: int, std_dev: int, price_column: str = 'close') -> tuple:
         """
         Calculate Bollinger Bands
@@ -286,7 +270,6 @@ class IndicatorCalculator:
         """
         # ATR requires high, low, close columns
         if not all(col in data.columns for col in ['high_price', 'low_price', 'close_price']):
-            # Fallback to simple volatility if proper OHLC not available
             return data[price_column].rolling(window=period).std()
         
         # Calculate True Range
@@ -306,7 +289,7 @@ class IndicatorCalculator:
         Args:
             data: OHLCV DataFrame
             indicator_periods: Dictionary with indicator names and their periods (required)
-            is_option: If True, uses 'last_price' instead of 'close' for price-based indicators
+            is_option: If True, uses 'mark_price' instead of 'close' for price-based indicators
             price_column: Specific column name to use for price-based indicators (overrides is_option)
             
         Returns:
@@ -377,10 +360,6 @@ class IndicatorCalculator:
         if 'sma' in indicator_periods:
             result['sma'] = self.calculate_sma(result, indicator_periods['sma'], price_column)
         
-        # Volatility
-        if 'volatility' in indicator_periods:
-            result['volatility'] = self.calculate_volatility(result, indicator_periods['volatility'], price_column)
-        
         # Price Change
         if 'price_change' in indicator_periods:
             result['price_change'] = self.calculate_price_change(result, price_column)
@@ -419,7 +398,7 @@ class IndicatorCalculator:
             existing_data: Historical OHLCV DataFrame with existing indicators
             new_row: New data row (Series) with OHLCV data
             indicator_periods: Dictionary with indicator names and their periods
-            is_option: If True, uses 'last_price' instead of 'close' for price-based indicators
+            is_option: If True, uses 'mark_price' instead of 'close' for price-based indicators
             
         Returns:
             Series with calculated indicator values for the new tick (empty strings for insufficient data)
@@ -430,7 +409,7 @@ class IndicatorCalculator:
             temp_data = pd.concat([temp_data, new_row.to_frame().T], ignore_index=True)
             
             # Select the appropriate price column based on asset type
-            price_column = 'last_price' if is_option else 'close'
+            price_column = 'mark_price' if is_option else 'close'
             
             # Initialize result series with the new row's basic data
             result = new_row.copy()
@@ -451,7 +430,6 @@ class IndicatorCalculator:
                 'stoch_rsi_d': ['stoch_rsi_d'],
                 'atr': ['atr'],
                 'vwma': ['vwma'],
-                'volatility': ['volatility'],
                 'price_change': ['price_change']
             }
             
@@ -513,10 +491,6 @@ class IndicatorCalculator:
                     elif period_key == 'vwma' and 'vwma' in self.indicator_functions:
                         result['vwma'] = self._calculate_single_vwma(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('vwma')
-                        
-                    elif period_key == 'volatility' and 'volatility' in self.indicator_functions:
-                        result['volatility'] = self._calculate_single_volatility(temp_data, period_value, last_idx, price_column)
-                        calculated_indicators.add('volatility')
                         
                     elif period_key == 'price_change' and 'price_change' in self.indicator_functions:
                         result['price_change'] = self._calculate_single_price_change(temp_data, last_idx, price_column)
@@ -785,12 +759,6 @@ class IndicatorCalculator:
         
         return numerator / denominator
     
-    def _calculate_single_volatility(self, temp_data: pd.DataFrame, period: int, last_idx: int, price_column: str = 'close') -> float:
-        """Calculate volatility for the latest tick"""
-        if len(temp_data) > period:  # Need past 'period' periods + current period
-            volatility = temp_data[price_column].rolling(window=period).std()
-            return volatility.iloc[last_idx] if not pd.isna(volatility.iloc[last_idx]) else float('nan')
-        return float('nan')
     
     def _calculate_single_price_change(self, temp_data: pd.DataFrame, last_idx: int, price_column: str = 'close') -> float:
         """Calculate price change for the latest tick"""
