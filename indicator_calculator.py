@@ -8,6 +8,8 @@ class IndicatorCalculator:
         self.indicator_functions = {
             'rsi': self._calculate_single_rsi,
             'ema': self._calculate_single_ema,
+            'ema_fast': self._calculate_single_ema,
+            'ema_slow': self._calculate_single_ema,
             'sma': self._calculate_single_sma,
             'macd_line': self._calculate_single_macd_line,
             'macd_signal': self._calculate_single_macd_signal,
@@ -15,6 +17,8 @@ class IndicatorCalculator:
             'bollinger_lower': self._calculate_single_bollinger_lower,
             'bollinger_bands_width': self._calculate_single_bollinger_width,
             'roc': self._calculate_single_roc,
+            'roc_fast': self._calculate_single_roc,
+            'roc_slow': self._calculate_single_roc,
             'roc_of_roc': self._calculate_single_roc_of_roc,
             'stoch_rsi_k': self._calculate_single_stoch_rsi_k,
             'stoch_rsi_d': self._calculate_single_stoch_rsi_d,
@@ -289,7 +293,6 @@ class IndicatorCalculator:
         Args:
             data: OHLCV DataFrame
             indicator_periods: Dictionary with indicator names and their periods (required)
-            is_option: If True, uses 'mark_price' instead of 'close' for price-based indicators
             price_column: Specific column name to use for price-based indicators (overrides is_option)
             
         Returns:
@@ -390,7 +393,7 @@ class IndicatorCalculator:
         
         return result
             
-    def calculate_latest_tick_indicators(self, existing_data: pd.DataFrame, new_row: pd.Series, indicator_periods: dict, is_option: bool = False) -> pd.Series:
+    def calculate_latest_tick_indicators(self, existing_data: pd.DataFrame, new_row: pd.Series, indicator_periods: dict) -> pd.Series:
         """
         Calculate technical indicators for a new tick/row based on existing historical data
         
@@ -409,7 +412,7 @@ class IndicatorCalculator:
             temp_data = pd.concat([temp_data, new_row.to_frame().T], ignore_index=True)
             
             # Select the appropriate price column based on asset type
-            price_column = 'mark_price' if is_option else 'close'
+            price_column = 'close'
             
             # Initialize result series with the new row's basic data
             result = new_row.copy()
@@ -420,12 +423,17 @@ class IndicatorCalculator:
                 'rsi': ['rsi'],
                 'ema': ['ema'],
                 'sma': ['sma'],
+                'ema_fast': ['ema_fast'],
+                'ema_slow': ['ema_slow'],
                 'macd_fast': ['macd_line', 'macd_signal'],
                 'macd_slow': ['macd_line', 'macd_signal'],
                 'macd_signal': ['macd_line', 'macd_signal'],
                 'bollinger_bands': ['bollinger_upper', 'bollinger_lower', 'bollinger_bands_width'],
                 'roc': ['roc'],
+                'roc_fast': ['roc_fast'],
+                'roc_slow': ['roc_slow'],
                 'roc_of_roc': ['roc_of_roc'],
+                'stoch_rsi_period': ['stoch_rsi_period'],  # Add the period configuration
                 'stoch_rsi_k': ['stoch_rsi_k'],
                 'stoch_rsi_d': ['stoch_rsi_d'],
                 'atr': ['atr'],
@@ -456,6 +464,14 @@ class IndicatorCalculator:
                         result['sma'] = self._calculate_single_sma(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('sma')
                         
+                    elif period_key == 'ema_fast' and 'ema_fast' in self.indicator_functions:
+                        result['ema_fast'] = self._calculate_single_ema(temp_data, period_value, last_idx, price_column)
+                        calculated_indicators.add('ema_fast')
+                        
+                    elif period_key == 'ema_slow' and 'ema_slow' in self.indicator_functions:
+                        result['ema_slow'] = self._calculate_single_ema(temp_data, period_value, last_idx, price_column)
+                        calculated_indicators.add('ema_slow')
+                        
                     elif period_key in ['macd_fast', 'macd_slow', 'macd_signal'] and 'macd_line' not in calculated_indicators:
                         # Calculate all MACD components at once
                         if all(k in indicator_periods for k in ['macd_fast', 'macd_slow', 'macd_signal']):
@@ -473,8 +489,28 @@ class IndicatorCalculator:
                         result['roc'] = self._calculate_single_roc(temp_data, period_value, last_idx, price_column)
                         calculated_indicators.add('roc')
                         
+                    elif period_key == 'roc_fast' and 'roc_fast' in self.indicator_functions:
+                        result['roc_fast'] = self._calculate_single_roc(temp_data, period_value, last_idx, price_column)
+                        calculated_indicators.add('roc_fast')
+                        
+                    elif period_key == 'roc_slow' and 'roc_slow' in self.indicator_functions:
+                        result['roc_slow'] = self._calculate_single_roc(temp_data, period_value, last_idx, price_column)
+                        calculated_indicators.add('roc_slow')
+                        
                     elif period_key == 'roc_of_roc' and 'roc_of_roc' in self.indicator_functions:
-                        result['roc_of_roc'] = self._calculate_single_roc_of_roc(temp_data, indicator_periods, last_idx, price_column)
+                        # Calculate ROC of ROC using the ROC function on ROC data
+                        roc_period = indicator_periods.get('roc', 11)
+                        roc_of_roc_period = period_value
+                        
+                        # First calculate ROC for the entire temp_data
+                        roc_series = self.calculate_roc(temp_data, roc_period, price_column)
+                        
+                        # Then calculate ROC of ROC using ROC function on the ROC series
+                        roc_df = pd.DataFrame({'roc': roc_series})
+                        roc_of_roc_series = self.calculate_roc(roc_df, roc_of_roc_period, 'roc')
+                        
+                        # Get the latest value
+                        result['roc_of_roc'] = roc_of_roc_series.iloc[last_idx] if not pd.isna(roc_of_roc_series.iloc[last_idx]) else float('nan')
                         calculated_indicators.add('roc_of_roc')
                         
                     elif period_key in ['stoch_rsi_k', 'stoch_rsi_d'] and 'stoch_rsi_k' not in calculated_indicators:
@@ -521,6 +557,8 @@ class IndicatorCalculator:
                 elif key in ['stoch_rsi_k', 'stoch_rsi_d']:
                     result['stoch_rsi_k'] = float('nan')
                     result['stoch_rsi_d'] = float('nan')
+                elif key in ['roc', 'roc_fast', 'roc_slow']:
+                    result[key] = float('nan')
                 else:
                     result[key] = float('nan')
             return result
@@ -688,9 +726,10 @@ class IndicatorCalculator:
     
     def _calculate_single_stoch_rsi_k(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
         """Calculate Stochastic RSI %K for the latest tick"""
-        rsi_period = periods.get('rsi', 14)
+        rsi_period = periods.get('stoch_rsi_period', 14)
         k_period = periods.get('stoch_rsi_k', 3)
-        if len(temp_data) >= rsi_period + k_period:
+        # Need: rsi_period for RSI + rsi_period for min/max + k_period for smoothing
+        if len(temp_data) >= rsi_period * 2 + k_period:
             delta = temp_data[price_column].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=rsi_period).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_period).mean()
@@ -705,10 +744,11 @@ class IndicatorCalculator:
     
     def _calculate_single_stoch_rsi_d(self, temp_data: pd.DataFrame, periods: dict, last_idx: int, price_column: str = 'close') -> float:
         """Calculate Stochastic RSI %D for the latest tick"""
-        rsi_period = periods.get('rsi', 14)
+        rsi_period = periods.get('stoch_rsi_period', 14)
         k_period = periods.get('stoch_rsi_k', 3)
         d_period = periods.get('stoch_rsi_d', 3)
-        if len(temp_data) >= rsi_period + k_period:
+        # Need: rsi_period for RSI + rsi_period for min/max + k_period for %K + d_period for %D
+        if len(temp_data) >= rsi_period * 2 + k_period + d_period:
             delta = temp_data[price_column].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=rsi_period).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_period).mean()
